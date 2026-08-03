@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Monitoreo y Tendencia Hidrológica - Río V</title>
+    
+    <!-- Leaflet CSS & FontAwesome -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+    <style>
+        html, body, #map { height: 100%; width: 100%; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; }
+
+        /* Estilo de los marcadores de mapa */
+        .marker-icon {
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 50%; color: white; font-size: 14px;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.4); border: 2px solid white;
+        }
+        .up { background-color: #d32f2f; }    /* Creció -> Rojo */
+        .down { background-color: #2e7d32; }  /* Bajó -> Verde */
+        .steady { background-color: #f57c00; }/* Estable -> Naranja */
+
+        /* Ajustes de Popups y Gráfico */
+        .leaflet-popup-content-wrapper { border-radius: 8px; width: 320px; }
+        .popup-title { font-weight: bold; font-size: 14px; color: #1a365d; margin-bottom: 4px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+        .popup-desc { font-style: italic; color: #555; font-size: 12px; margin-bottom: 8px; background: #f7fafc; padding: 4px 6px; border-radius: 4px; }
+        .popup-data { font-size: 12px; line-height: 1.4; margin-bottom: 8px; }
+        .chart-container { width: 100%; height: 160px; margin-top: 6px; }
+
+        /* Leyenda */
+        .legend {
+            background: rgba(255, 255, 255, 0.95); padding: 12px 16px; line-height: 1.8em;
+            color: #2c3e50; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 13px;
+        }
+        .legend h4 { margin: 0 0 6px 0; font-size: 14px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+        .legend i { width: 20px; text-align: center; margin-right: 6px; }
+
+        .btn-refresh {
+            background-color: white; width: 34px; height: 34px; display: flex;
+            align-items: center; justify-content: center; text-decoration: none;
+            color: #333; font-size: 16px; border-radius: 4px; box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+        }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- Leaflet JS & Chart.js -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    const spreadsheetId = '18vGks6rGhxljMqkDvKExYJKXORL2E9gWMIyaPZS0euU';
+
+    const map = L.map('map').setView([-35.38, -63.28], 9);
+
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
+    const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri' });
+
+    // Overlay TIF Capa de Agua
+    const boundsWaterTif = [[-33.065174, -66.043808], [-35.822890, -62.869419]];
+    const waterLayer = L.imageOverlay('https://earth.usercontent.google.com/hostedimage/e/*/4AAjQbR7T0Lt_4aSdNB1EBkZbKdv-O9ZHy8X-JUxvlYC6oSDCFFtmiNZMKPK6vfxo-NZfi30uu_aY6FbLjNJ9n9cY2LI1GfT0oL_ri6VY_jd7vscaeS5lsQX3JFCR_ujzMWBC18udRgbTn7O5kOGPJXz78HlgiOER-Jr89NXZVSUscM4M5GR-7beLGVtg7q4o495QpgckN1GlBb9o7cZSgsjRAyA3An7-RrE9sV8XvlOJ5F9SmR7U9DGyqu99aAhAUoT2McZ457RBNl3XHRU?authuser=0&fife=s16383', boundsWaterTif, { opacity: 0.6 }).addTo(map);
+
+    const capaPuntos = L.layerGroup().addTo(map);
+
+    // Datos base locales con histórico para gráficos iniciales
+    let puntosActuales = [
+        { id: "p1", nombre: "Punto : Rio V Ruta 26 (SNIH)", lat: -34.764078, lng: -63.648932, alt: 124.69, desc: "Estación del sistema Nacional.", actual: 1.80, anterior: 1.80, tendencia: "estable", fecha: "2026-08-03", historico: [1.60, 1.70, 1.80, 1.80] },
+        { id: "p2", nombre: "Puente Banderaló", lat: -35.110224, lng: -63.385621, alt: 120.14, desc: "", actual: 1.15, anterior: 1.35, tendencia: "bajo", fecha: "2026-08-03", historico: [1.50, 1.42, 1.35, 1.15] },
+        { id: "p3", nombre: "Punto: Cruce", lat: -35.300050, lng: -63.346599, alt: 114.01, desc: "", actual: 1.95, anterior: 1.70, tendencia: "subio", fecha: "2026-08-03", historico: [1.40, 1.55, 1.70, 1.95] },
+        { id: "p4", nombre: "Puente de la Zanja", lat: -35.389269, lng: -63.280725, alt: 111.67, desc: "", actual: 2.10, anterior: 1.85, tendencia: "subio", fecha: "2026-08-03", historico: [1.60, 1.75, 1.85, 2.10] },
+        { id: "p5", nombre: "Punto: Puente Río V R 70", lat: -35.498836, lng: -63.251323, alt: 104.83, desc: "Hay regla hidrométrica.", actual: 2.45, anterior: 2.10, tendencia: "subio", fecha: "2026-08-03", historico: [1.80, 1.95, 2.10, 2.45] },
+        { id: "p6", nombre: "Punto: Ruta 70", lat: -35.514436, lng: -63.297182, alt: 112.71, desc: "", actual: 1.40, anterior: 1.40, tendencia: "estable", fecha: "2026-08-03", historico: [1.35, 1.38, 1.40, 1.40] },
+        { id: "p7", nombre: "Estancia la Justina", lat: -35.618047, lng: -63.241064, alt: 108.30, desc: "", actual: 0.90, anterior: 1.10, tendencia: "bajo", fecha: "2026-08-03", historico: [1.30, 1.20, 1.10, 0.90] },
+        { id: "p8", nombre: "Don Pietro", lat: -35.745964, lng: -63.085404, alt: 102.06, desc: "", actual: 0.85, anterior: 0.90, tendencia: "bajo", fecha: "2026-08-03", historico: [1.05, 0.98, 0.90, 0.85] },
+        { id: "p9", nombre: "Salida lag Cuero de Zorro", lat: -35.767300, lng: -62.900240, alt: 95.10, desc: "Salida hacia Hinojo Las Tunas. Compuertas deshabilitadas", actual: 3.10, anterior: 2.80, tendencia: "subio", fecha: "2026-08-03", historico: [2.30, 2.50, 2.80, 3.10] }
+    ];
+
+    function parseNum(v) {
+        if (v === null || v === undefined || v === '') return NaN;
+        return parseFloat(v.toString().replace(',', '.').trim());
+    }
+
+    function crearIconoMonitoreo(tendencia) {
+        let claseCss = 'steady';
+        let iconoFa = 'fa-minus';
+        const t = (tendencia || '').toString().toLowerCase().trim();
+        if (t.includes('sub')) { claseCss = 'up'; iconoFa = 'fa-arrow-up'; }
+        else if (t.includes('baj')) { claseCss = 'down'; iconoFa = 'fa-arrow-down'; }
+
+        return L.divIcon({
+            className: 'custom-pin',
+            html: `<div class="marker-icon ${claseCss}" style="width: 32px; height: 32px;"><i class="fa-solid ${iconoFa}"></i></div>`,
+            iconSize: [32, 32], iconAnchor: [16, 16]
+        });
+    }
+
+    function renderizarPuntos(lista) {
+        capaPuntos.clearLayers();
+        lista.forEach((p, index) => {
+            if (!isNaN(p.lat) && !isNaN(p.lng)) {
+                let deltaTxt = '-';
+                let colorDelta = '#f57c00';
+
+                if (!isNaN(p.actual) && !isNaN(p.anterior)) {
+                    const delta = (p.actual - p.anterior).toFixed(2);
+                    const signo = delta > 0 ? '+' : '';
+                    colorDelta = p.tendencia.toString().toLowerCase().includes('sub') ? '#d32f2f' : (p.tendencia.toString().toLowerCase().includes('baj') ? '#2e7d32' : '#f57c00');
+                    deltaTxt = `${signo}${delta} m`;
+                }
+
+                const canvasId = `chart-${index}`;
+                const popupContent = `
+                    <div>
+                        <div class="popup-title">${p.nombre}</div>
+                        ${p.desc ? `<div class="popup-desc">${p.desc}</div>` : ''}
+                        <div class="popup-data">
+                            <b>Cota terreno:</b> ${p.alt || '-'} msnm<br>
+                            <b>Última medición:</b> ${p.actual !== undefined ? p.actual + ' m' : '-'} (${p.fecha || '-'})<br>
+                            <b>Variación:</b> <span style="font-weight:bold; color:${colorDelta};">${deltaTxt}</span>
+                        </div>
+                        <div style="font-weight:bold; font-size:11px; color:#444; margin-top:4px;">Evolución de Nivel (m):</div>
+                        <div class="chart-container">
+                            <canvas id="${canvasId}"></canvas>
+                        </div>
+                    </div>
+                `;
+
+                const marker = L.marker([p.lat, p.lng], { icon: crearIconoMonitoreo(p.tendencia) })
+                    .bindPopup(popupContent);
+
+                // Evento al abrir el popup para renderizar el gráfico
+                marker.on('popupopen', function () {
+                    setTimeout(() => {
+                        const ctx = document.getElementById(canvasId);
+                        if (ctx) {
+                            new Chart(ctx, {
+                                type: 'line',
+                                data: {
+                                    labels: ['Sem 1', 'Sem 2', 'Sem 3', 'Actual'],
+                                    datasets: [{
+                                        label: 'Nivel (m)',
+                                        data: p.historico || [p.anterior, p.actual],
+                                        borderColor: colorDelta,
+                                        backgroundColor: 'rgba(0, 0, 0, 0.05)',
+                                        borderWidth: 2,
+                                        fill: true,
+                                        tension: 0.3
+                                    }]
+                                },
+                                options: {
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    plugins: { legend: { display: false } },
+                                    scales: {
+                                        y: { beginAtZero: false, ticks: { font: { size: 9 } } },
+                                        x: { ticks: { font: { size: 9 } } }
+                                    }
+                                }
+                            });
+                        }
+                    }, 100);
+                });
+
+                marker.addTo(capaPuntos);
+            }
+        });
+    }
+
+    renderizarPuntos(puntosActuales);
+
+    // Botón de Recarga manual
+    const btnRefresh = L.control({ position: 'topright' });
+    btnRefresh.onAdd = function () {
+        const div = L.DomUtil.create('div', 'leaflet-bar');
+        div.innerHTML = `<a href="#" class="btn-refresh" title="Recargar datos"><i class="fa-solid fa-rotate-right"></i></a>`;
+        div.onclick = function (e) { e.preventDefault(); renderizarPuntos(puntosActuales); };
+        return div;
+    };
+    btnRefresh.addTo(map);
+
+    // Leyenda y Control de Capas
+    const legend = L.control({ position: 'bottomright' });
+    legend.onAdd = function () {
+        const div = L.DomUtil.create('div', 'legend');
+        div.innerHTML += '<h4>Comportamiento Hidrométrico</h4>';
+        div.innerHTML += '<div><i class="fa-solid fa-arrow-up" style="color:#d32f2f;"></i> Nivel Subió (Alerta)</div>';
+        div.innerHTML += '<div><i class="fa-solid fa-arrow-down" style="color:#2e7d32;"></i> Nivel Bajó</div>';
+        div.innerHTML += '<div><i class="fa-solid fa-minus" style="color:#f57c00;"></i> Sin Variación</div>';
+        return div;
+    };
+    legend.addTo(map);
+
+    L.control.layers({ "OpenStreetMap": osm, "Satelital Esri": esriSatellite }, { "Puntos de Monitoreo": capaPuntos, "Capa de Agua (TIF)": waterLayer }).addTo(map);
+</script>
+
+</body>
+</html>
