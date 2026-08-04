@@ -58,7 +58,7 @@
     const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
     const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri' });
 
-    // Overlay TIF Capa de Agua
+    // Capa de Agua
     const boundsWaterTif = [[-33.065174, -66.043808], [-35.822890, -62.869419]];
     const waterLayer = L.imageOverlay('https://earth.usercontent.google.com/hostedimage/e/*/4AAjQbR7T0Lt_4aSdNB1EBkZbKdv-O9ZHy8X-JUxvlYC6oSDCFFtmiNZMKPK6vfxo-NZfi30uu_aY6FbLjNJ9n9cY2LI1GfT0oL_ri6VY_jd7vscaeS5lsQX3JFCR_ujzMWBC18udRgbTn7O5kOGPJXz78HlgiOER-Jr89NXZVSUscM4M5GR-7beLGVtg7q4o495QpgckN1GlBb9o7cZSgsjRAyA3An7-RrE9sV8XvlOJ5F9SmR7U9DGyqu99aAhAUoT2McZ457RBNl3XHRU?authuser=0&fife=s16383', boundsWaterTif, { opacity: 0.6 }).addTo(map);
 
@@ -66,7 +66,7 @@
 
     function parseNum(v) {
         if (v === null || v === undefined || v === '') return NaN;
-        return parseFloat(v.toString().replace(',', '.').trim());
+        return parseFloat(v.toString().replace(',', '.').replace(/"/g, '').trim());
     }
 
     function crearIconoMonitoreo(tendencia) {
@@ -162,19 +162,24 @@
     }
 
     function cargarDatosSheets() {
-        const timestamp = new Date().getTime();
-        const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&id=${spreadsheetId}&_cb=${timestamp}`;
+        // Anti-caché dinámico
+        const randomToken = Math.floor(Math.random() * 100000);
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&id=${spreadsheetId}&nocache=${randomToken}`;
 
         fetch(csvUrl)
             .then(res => res.text())
             .then(csvText => {
-                const lineas = csvText.split('\n');
+                const lineas = csvText.split(/\r?\n/);
                 if (lineas.length <= 1) return;
 
                 const mapaEstaciones = {};
 
                 for (let i = 1; i < lineas.length; i++) {
+                    if (!lineas[i].trim()) continue;
+                    
+                    // Regex para separar comas respetando comillas
                     const col = lineas[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+                    
                     if (col.length >= 3) {
                         const nombre = (col[0] || '').replace(/"/g, '').trim();
                         const lat = parseNum(col[1]);
@@ -184,9 +189,22 @@
                         const actual = parseNum(col[5]);
                         const anterior = parseNum(col[6]);
                         const fecha = (col[7] || '').replace(/"/g, '').trim();
-                        const hora = (col[8] || '').replace(/"/g, '').trim();
-                        let tendencia = (col[9] || '').replace(/"/g, '').trim();
-                        const operador = (col[10] || '').replace(/"/g, '').trim();
+
+                        // Detección adaptable si la fila tiene la columna 'Hora' o no
+                        let hora = '';
+                        let tendencia = '';
+                        let operador = '';
+
+                        if (col.length >= 11) {
+                            // Estructura con Hora (11 columnas)
+                            hora = (col[8] || '').replace(/"/g, '').trim();
+                            tendencia = (col[9] || '').replace(/"/g, '').trim();
+                            operador = (col[10] || '').replace(/"/g, '').trim();
+                        } else {
+                            // Estructura antigua sin Hora (10 columnas)
+                            tendencia = (col[8] || '').replace(/"/g, '').trim();
+                            operador = (col[9] || '').replace(/"/g, '').trim();
+                        }
 
                         if (nombre && !isNaN(lat) && !isNaN(lng)) {
                             if (!mapaEstaciones[nombre]) {
@@ -197,6 +215,7 @@
                                 };
                             }
 
+                            // Sobrescribe siempre con la lectura de la fila más reciente (de más abajo)
                             mapaEstaciones[nombre].actual = actual;
                             mapaEstaciones[nombre].anterior = anterior;
                             mapaEstaciones[nombre].fecha = fecha;
@@ -222,6 +241,7 @@
 
     cargarDatosSheets();
 
+    // Botón Recargar
     const btnRefresh = L.control({ position: 'topright' });
     btnRefresh.onAdd = function () {
         const div = L.DomUtil.create('div', 'leaflet-bar');
@@ -234,6 +254,7 @@
     };
     btnRefresh.addTo(map);
 
+    // Leyenda
     const legend = L.control({ position: 'bottomright' });
     legend.onAdd = function () {
         const div = L.DomUtil.create('div', 'legend');
