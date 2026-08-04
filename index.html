@@ -3,33 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Monitoreo y Tendencia Hidrológica - Río V</title>
+    <title>Visor de Monitoreo Hidrológico - Río V</title>
     
-    <!-- Leaflet CSS & FontAwesome -->
+    <!-- Leaflet CSS & FontAwesome Icons -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 
     <style>
         html, body, #map { height: 100%; width: 100%; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; }
 
-        /* Estilo de los marcadores de mapa */
+        /* Estilo para los marcadores de tendencia */
         .marker-icon {
             display: flex; align-items: center; justify-content: center;
             border-radius: 50%; color: white; font-size: 14px;
             box-shadow: 0 3px 6px rgba(0,0,0,0.4); border: 2px solid white;
         }
-        .up { background-color: #d32f2f; }    /* Creció -> Rojo */
-        .down { background-color: #2e7d32; }  /* Bajó -> Verde */
-        .steady { background-color: #f57c00; }/* Estable -> Naranja */
+        .up { background-color: #d32f2f; }    /* Nivel Subió -> Rojo */
+        .down { background-color: #2e7d32; }  /* Nivel Bajó -> Verde */
+        .steady { background-color: #f57c00; }/* Nivel Estable -> Naranja */
 
-        /* Ajustes de Popups y Gráfico */
-        .leaflet-popup-content-wrapper { border-radius: 8px; width: 320px; }
-        .popup-title { font-weight: bold; font-size: 14px; color: #1a365d; margin-bottom: 4px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
-        .popup-desc { font-style: italic; color: #555; font-size: 12px; margin-bottom: 8px; background: #f7fafc; padding: 4px 6px; border-radius: 4px; }
-        .popup-data { font-size: 12px; line-height: 1.4; margin-bottom: 8px; }
-        .chart-container { width: 100%; height: 160px; margin-top: 6px; }
-
-        /* Leyenda */
+        /* Panel de leyenda */
         .legend {
             background: rgba(255, 255, 255, 0.95); padding: 12px 16px; line-height: 1.8em;
             color: #2c3e50; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 13px;
@@ -37,11 +30,18 @@
         .legend h4 { margin: 0 0 6px 0; font-size: 14px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
         .legend i { width: 20px; text-align: center; margin-right: 6px; }
 
+        .leaflet-popup-content-wrapper { border-radius: 8px; width: 310px; }
+        .popup-title { font-weight: bold; font-size: 14px; color: #1a365d; margin-bottom: 4px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+        .popup-desc { font-style: italic; color: #555; font-size: 12px; margin-bottom: 8px; background: #f7fafc; padding: 4px 6px; border-radius: 4px; }
+        .popup-data { font-size: 12px; line-height: 1.4; }
+        .chart-container { width: 100%; height: 150px; margin-top: 6px; }
+
         .btn-refresh {
             background-color: white; width: 34px; height: 34px; display: flex;
             align-items: center; justify-content: center; text-decoration: none;
             color: #333; font-size: 16px; border-radius: 4px; box-shadow: 0 1px 5px rgba(0,0,0,0.4);
         }
+        .btn-refresh:hover { background-color: #f4f4f4; color: #000; }
     </style>
 </head>
 <body>
@@ -66,19 +66,6 @@
 
     const capaPuntos = L.layerGroup().addTo(map);
 
-    // Datos base locales con histórico para gráficos iniciales
-    let puntosActuales = [
-        { id: "p1", nombre: "Punto : Rio V Ruta 26 (SNIH)", lat: -34.764078, lng: -63.648932, alt: 124.69, desc: "Estación del sistema Nacional.", actual: 1.80, anterior: 1.80, tendencia: "estable", fecha: "2026-08-03", historico: [1.60, 1.70, 1.80, 1.80] },
-        { id: "p2", nombre: "Puente Banderaló", lat: -35.110224, lng: -63.385621, alt: 120.14, desc: "", actual: 1.15, anterior: 1.35, tendencia: "bajo", fecha: "2026-08-03", historico: [1.50, 1.42, 1.35, 1.15] },
-        { id: "p3", nombre: "Punto: Cruce", lat: -35.300050, lng: -63.346599, alt: 114.01, desc: "", actual: 1.95, anterior: 1.70, tendencia: "subio", fecha: "2026-08-03", historico: [1.40, 1.55, 1.70, 1.95] },
-        { id: "p4", nombre: "Puente de la Zanja", lat: -35.389269, lng: -63.280725, alt: 111.67, desc: "", actual: 2.10, anterior: 1.85, tendencia: "subio", fecha: "2026-08-03", historico: [1.60, 1.75, 1.85, 2.10] },
-        { id: "p5", nombre: "Punto: Puente Río V R 70", lat: -35.498836, lng: -63.251323, alt: 104.83, desc: "Hay regla hidrométrica.", actual: 2.45, anterior: 2.10, tendencia: "subio", fecha: "2026-08-03", historico: [1.80, 1.95, 2.10, 2.45] },
-        { id: "p6", nombre: "Punto: Ruta 70", lat: -35.514436, lng: -63.297182, alt: 112.71, desc: "", actual: 1.40, anterior: 1.40, tendencia: "estable", fecha: "2026-08-03", historico: [1.35, 1.38, 1.40, 1.40] },
-        { id: "p7", nombre: "Estancia la Justina", lat: -35.618047, lng: -63.241064, alt: 108.30, desc: "", actual: 0.90, anterior: 1.10, tendencia: "bajo", fecha: "2026-08-03", historico: [1.30, 1.20, 1.10, 0.90] },
-        { id: "p8", nombre: "Don Pietro", lat: -35.745964, lng: -63.085404, alt: 102.06, desc: "", actual: 0.85, anterior: 0.90, tendencia: "bajo", fecha: "2026-08-03", historico: [1.05, 0.98, 0.90, 0.85] },
-        { id: "p9", nombre: "Salida lag Cuero de Zorro", lat: -35.767300, lng: -62.900240, alt: 95.10, desc: "Salida hacia Hinojo Las Tunas. Compuertas deshabilitadas", actual: 3.10, anterior: 2.80, tendencia: "subio", fecha: "2026-08-03", historico: [2.30, 2.50, 2.80, 3.10] }
-    ];
-
     function parseNum(v) {
         if (v === null || v === undefined || v === '') return NaN;
         return parseFloat(v.toString().replace(',', '.').trim());
@@ -98,10 +85,14 @@
         });
     }
 
-    function renderizarPuntos(lista) {
+    function renderizarPuntos(diccionarioPuntos) {
         capaPuntos.clearLayers();
-        lista.forEach((p, index) => {
+        
+        let index = 0;
+        Object.keys(diccionarioPuntos).forEach(nombreKey => {
+            const p = diccionarioPuntos[nombreKey];
             if (!isNaN(p.lat) && !isNaN(p.lng)) {
+                index++;
                 let deltaTxt = '-';
                 let colorDelta = '#f57c00';
 
@@ -112,17 +103,18 @@
                     deltaTxt = `${signo}${delta} m`;
                 }
 
-                const canvasId = `chart-${index}`;
+                const canvasId = `chart-visor-${index}`;
                 const popupContent = `
                     <div>
                         <div class="popup-title">${p.nombre}</div>
                         ${p.desc ? `<div class="popup-desc">${p.desc}</div>` : ''}
                         <div class="popup-data">
                             <b>Cota terreno:</b> ${p.alt || '-'} msnm<br>
-                            <b>Última medición:</b> ${p.actual !== undefined ? p.actual + ' m' : '-'} (${p.fecha || '-'})<br>
+                            <b>Última lectura:</b> ${!isNaN(p.actual) ? p.actual + ' m' : '-'} (${p.fecha || '-'})<br>
                             <b>Variación:</b> <span style="font-weight:bold; color:${colorDelta};">${deltaTxt}</span>
+                            ${p.operador ? `<br><small style="color:#666;">Operador: ${p.operador}</small>` : ''}
                         </div>
-                        <div style="font-weight:bold; font-size:11px; color:#444; margin-top:4px;">Evolución de Nivel (m):</div>
+                        <div style="font-weight:bold; font-size:11px; color:#444; margin-top:6px;">Tendencia Histórica:</div>
                         <div class="chart-container">
                             <canvas id="${canvasId}"></canvas>
                         </div>
@@ -132,7 +124,6 @@
                 const marker = L.marker([p.lat, p.lng], { icon: crearIconoMonitoreo(p.tendencia) })
                     .bindPopup(popupContent);
 
-                // Evento al abrir el popup para renderizar el gráfico
                 marker.on('popupopen', function () {
                     setTimeout(() => {
                         const ctx = document.getElementById(canvasId);
@@ -140,10 +131,10 @@
                             new Chart(ctx, {
                                 type: 'line',
                                 data: {
-                                    labels: ['Sem 1', 'Sem 2', 'Sem 3', 'Actual'],
+                                    labels: p.historicoFechas.length > 0 ? p.historicoFechas : ['Anterior', 'Actual'],
                                     datasets: [{
                                         label: 'Nivel (m)',
-                                        data: p.historico || [p.anterior, p.actual],
+                                        data: p.historicoValores.length > 0 ? p.historicoValores : [p.anterior, p.actual],
                                         borderColor: colorDelta,
                                         backgroundColor: 'rgba(0, 0, 0, 0.05)',
                                         borderWidth: 2,
@@ -170,19 +161,82 @@
         });
     }
 
-    renderizarPuntos(puntosActuales);
+    // Consulta el CSV de Google Sheets procesando el histórico completo de filas
+    function cargarDatosSheets() {
+        const timestamp = new Date().getTime();
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&id=${spreadsheetId}&_cb=${timestamp}`;
 
-    // Botón de Recarga manual
+        fetch(csvUrl)
+            .then(res => res.text())
+            .then(csvText => {
+                const lineas = csvText.split('\n');
+                if (lineas.length <= 1) return;
+
+                const mapaEstaciones = {};
+
+                // Procesamos la planilla fila por fila para acumular historial y tomar siempre la última lectura
+                for (let i = 1; i < lineas.length; i++) {
+                    const col = lineas[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+                    if (col.length >= 3) {
+                        const nombre = (col[0] || '').replace(/"/g, '').trim();
+                        const lat = parseNum(col[1]);
+                        const lng = parseNum(col[2]);
+                        const alt = (col[3] || '').replace(/"/g, '').trim();
+                        const desc = (col[4] || '').replace(/"/g, '').trim();
+                        const actual = parseNum(col[5]);
+                        const anterior = parseNum(col[6]);
+                        const fecha = (col[7] || '').replace(/"/g, '').trim();
+                        let tendencia = (col[8] || '').replace(/"/g, '').trim();
+                        const operador = (col[9] || '').replace(/"/g, '').trim();
+
+                        if (nombre && !isNaN(lat) && !isNaN(lng)) {
+                            if (!mapaEstaciones[nombre]) {
+                                mapaEstaciones[nombre] = {
+                                    nombre, lat, lng, alt, desc, actual, anterior, fecha, tendencia, operador,
+                                    historicoValores: [],
+                                    historicoFechas: []
+                                };
+                            }
+
+                            // Actualiza con los datos de la fila más reciente (las que se agregan abajo)
+                            mapaEstaciones[nombre].actual = actual;
+                            mapaEstaciones[nombre].anterior = anterior;
+                            mapaEstaciones[nombre].fecha = fecha;
+                            mapaEstaciones[nombre].tendencia = tendencia;
+                            mapaEstaciones[nombre].operador = operador;
+
+                            if (!isNaN(actual)) {
+                                mapaEstaciones[nombre].historicoValores.push(actual);
+                                mapaEstaciones[nombre].historicoFechas.push(fecha || `Med ${mapaEstaciones[nombre].historicoValores.length}`);
+                            }
+                        }
+                    }
+                }
+
+                if (Object.keys(mapaEstaciones).length > 0) {
+                    renderizarPuntos(mapaEstaciones);
+                    console.log("¡Mapa actualizado correctamente desde Google Sheets!");
+                }
+            })
+            .catch(err => console.error("Error al cargar datos del Sheet:", err));
+    }
+
+    cargarDatosSheets();
+
+    // Botón de recarga manual anti-caché
     const btnRefresh = L.control({ position: 'topright' });
     btnRefresh.onAdd = function () {
         const div = L.DomUtil.create('div', 'leaflet-bar');
         div.innerHTML = `<a href="#" class="btn-refresh" title="Recargar datos"><i class="fa-solid fa-rotate-right"></i></a>`;
-        div.onclick = function (e) { e.preventDefault(); renderizarPuntos(puntosActuales); };
+        div.onclick = function (e) {
+            e.preventDefault();
+            cargarDatosSheets();
+        };
         return div;
     };
     btnRefresh.addTo(map);
 
-    // Leyenda y Control de Capas
+    // Leyenda y Selector de Capas
     const legend = L.control({ position: 'bottomright' });
     legend.onAdd = function () {
         const div = L.DomUtil.create('div', 'legend');
