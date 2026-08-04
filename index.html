@@ -32,7 +32,10 @@
         .popup-title { font-weight: bold; font-size: 14px; color: #1a365d; margin-bottom: 4px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
         .popup-desc { font-style: italic; color: #555; font-size: 12px; margin-bottom: 8px; background: #f7fafc; padding: 4px 6px; border-radius: 4px; }
         .popup-data { font-size: 12px; line-height: 1.4; }
-        .chart-container { width: 100%; height: 150px; margin-top: 6px; }
+        .popup-photo { margin-top: 8px; text-align: center; }
+        .popup-photo img { width: 100%; height: 120px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e0; }
+        .popup-photo a { font-size: 11px; color: #2b6cb0; text-decoration: none; font-weight: bold; }
+        .chart-container { width: 100%; height: 140px; margin-top: 6px; }
 
         .btn-refresh {
             background-color: white; width: 34px; height: 34px; display: flex;
@@ -58,7 +61,7 @@
     const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
     const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri' });
 
-    // Capa de Agua
+    // Overlay Capa de Agua
     const boundsWaterTif = [[-33.065174, -66.043808], [-35.822890, -62.869419]];
     const waterLayer = L.imageOverlay('https://earth.usercontent.google.com/hostedimage/e/*/4AAjQbR7T0Lt_4aSdNB1EBkZbKdv-O9ZHy8X-JUxvlYC6oSDCFFtmiNZMKPK6vfxo-NZfi30uu_aY6FbLjNJ9n9cY2LI1GfT0oL_ri6VY_jd7vscaeS5lsQX3JFCR_ujzMWBC18udRgbTn7O5kOGPJXz78HlgiOER-Jr89NXZVSUscM4M5GR-7beLGVtg7q4o495QpgckN1GlBb9o7cZSgsjRAyA3An7-RrE9sV8XvlOJ5F9SmR7U9DGyqu99aAhAUoT2McZ457RBNl3XHRU?authuser=0&fife=s16383', boundsWaterTif, { opacity: 0.6 }).addTo(map);
 
@@ -114,6 +117,16 @@
                             <b>Variación:</b> <span style="font-weight:bold; color:${colorDelta};">${deltaTxt}</span>
                             ${p.operador ? `<br><small style="color:#666;">Operador: ${p.operador}</small>` : ''}
                         </div>
+
+                        ${p.photoUrl ? `
+                            <div class="popup-photo">
+                                <a href="${p.photoUrl}" target="_blank">
+                                    <img src="${p.photoUrl}" alt="Foto de Campo" onerror="this.style.display='none'">
+                                    <br><i class="fa-solid fa-arrow-up-right-from-square"></i> Ver foto completa
+                                </a>
+                            </div>
+                        ` : ''}
+
                         <div style="font-weight:bold; font-size:11px; color:#444; margin-top:6px;">Tendencia Histórica:</div>
                         <div class="chart-container">
                             <canvas id="${canvasId}"></canvas>
@@ -162,7 +175,6 @@
     }
 
     function cargarDatosSheets() {
-        // Anti-caché dinámico
         const randomToken = Math.floor(Math.random() * 100000);
         const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&id=${spreadsheetId}&nocache=${randomToken}`;
 
@@ -177,7 +189,6 @@
                 for (let i = 1; i < lineas.length; i++) {
                     if (!lineas[i].trim()) continue;
                     
-                    // Regex para separar comas respetando comillas
                     const col = lineas[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
                     
                     if (col.length >= 3) {
@@ -189,39 +200,27 @@
                         const actual = parseNum(col[5]);
                         const anterior = parseNum(col[6]);
                         const fecha = (col[7] || '').replace(/"/g, '').trim();
-
-                        // Detección adaptable si la fila tiene la columna 'Hora' o no
-                        let hora = '';
-                        let tendencia = '';
-                        let operador = '';
-
-                        if (col.length >= 11) {
-                            // Estructura con Hora (11 columnas)
-                            hora = (col[8] || '').replace(/"/g, '').trim();
-                            tendencia = (col[9] || '').replace(/"/g, '').trim();
-                            operador = (col[10] || '').replace(/"/g, '').trim();
-                        } else {
-                            // Estructura antigua sin Hora (10 columnas)
-                            tendencia = (col[8] || '').replace(/"/g, '').trim();
-                            operador = (col[9] || '').replace(/"/g, '').trim();
-                        }
+                        const hora = (col[8] || '').replace(/"/g, '').trim();
+                        const tendencia = (col[9] || '').replace(/"/g, '').trim();
+                        const operador = (col[10] || '').replace(/"/g, '').trim();
+                        const photoUrl = (col[11] || '').replace(/"/g, '').trim(); // Columna L: Foto URL
 
                         if (nombre && !isNaN(lat) && !isNaN(lng)) {
                             if (!mapaEstaciones[nombre]) {
                                 mapaEstaciones[nombre] = {
-                                    nombre, lat, lng, alt, desc, actual, anterior, fecha, hora, tendencia, operador,
+                                    nombre, lat, lng, alt, desc, actual, anterior, fecha, hora, tendencia, operador, photoUrl,
                                     historicoValores: [],
                                     historicoFechas: []
                                 };
                             }
 
-                            // Sobrescribe siempre con la lectura de la fila más reciente (de más abajo)
                             mapaEstaciones[nombre].actual = actual;
                             mapaEstaciones[nombre].anterior = anterior;
                             mapaEstaciones[nombre].fecha = fecha;
                             mapaEstaciones[nombre].hora = hora;
                             mapaEstaciones[nombre].tendencia = tendencia;
                             mapaEstaciones[nombre].operador = operador;
+                            if (photoUrl) mapaEstaciones[nombre].photoUrl = photoUrl;
 
                             if (!isNaN(actual)) {
                                 mapaEstaciones[nombre].historicoValores.push(actual);
@@ -241,7 +240,6 @@
 
     cargarDatosSheets();
 
-    // Botón Recargar
     const btnRefresh = L.control({ position: 'topright' });
     btnRefresh.onAdd = function () {
         const div = L.DomUtil.create('div', 'leaflet-bar');
@@ -254,7 +252,6 @@
     };
     btnRefresh.addTo(map);
 
-    // Leyenda
     const legend = L.control({ position: 'bottomright' });
     legend.onAdd = function () {
         const div = L.DomUtil.create('div', 'legend');
