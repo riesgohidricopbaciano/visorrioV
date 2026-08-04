@@ -12,17 +12,15 @@
     <style>
         html, body, #map { height: 100%; width: 100%; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; }
 
-        /* Estilo para los marcadores de tendencia */
         .marker-icon {
             display: flex; align-items: center; justify-content: center;
             border-radius: 50%; color: white; font-size: 14px;
             box-shadow: 0 3px 6px rgba(0,0,0,0.4); border: 2px solid white;
         }
-        .up { background-color: #d32f2f; }    /* Nivel Subió -> Rojo */
-        .down { background-color: #2e7d32; }  /* Nivel Bajó -> Verde */
-        .steady { background-color: #f57c00; }/* Nivel Estable -> Naranja */
+        .up { background-color: #d32f2f; }    /* Subió -> Rojo */
+        .down { background-color: #2e7d32; }  /* Bajó -> Verde */
+        .steady { background-color: #f57c00; }/* Estable -> Naranja */
 
-        /* Panel de leyenda */
         .legend {
             background: rgba(255, 255, 255, 0.95); padding: 12px 16px; line-height: 1.8em;
             color: #2c3e50; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 13px;
@@ -104,13 +102,15 @@
                 }
 
                 const canvasId = `chart-visor-${index}`;
+                const fechaHoraTxt = `${p.fecha || ''} ${p.hora || ''}`.trim();
+
                 const popupContent = `
                     <div>
                         <div class="popup-title">${p.nombre}</div>
                         ${p.desc ? `<div class="popup-desc">${p.desc}</div>` : ''}
                         <div class="popup-data">
                             <b>Cota terreno:</b> ${p.alt || '-'} msnm<br>
-                            <b>Última lectura:</b> ${!isNaN(p.actual) ? p.actual + ' m' : '-'} (${p.fecha || '-'})<br>
+                            <b>Última lectura:</b> ${!isNaN(p.actual) ? p.actual + ' m' : '-'} (${fechaHoraTxt || '-'})<br>
                             <b>Variación:</b> <span style="font-weight:bold; color:${colorDelta};">${deltaTxt}</span>
                             ${p.operador ? `<br><small style="color:#666;">Operador: ${p.operador}</small>` : ''}
                         </div>
@@ -161,7 +161,6 @@
         });
     }
 
-    // Consulta el CSV de Google Sheets procesando el histórico completo de filas
     function cargarDatosSheets() {
         const timestamp = new Date().getTime();
         const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&id=${spreadsheetId}&_cb=${timestamp}`;
@@ -174,7 +173,6 @@
 
                 const mapaEstaciones = {};
 
-                // Procesamos la planilla fila por fila para acumular historial y tomar siempre la última lectura
                 for (let i = 1; i < lineas.length; i++) {
                     const col = lineas[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
                     if (col.length >= 3) {
@@ -186,28 +184,30 @@
                         const actual = parseNum(col[5]);
                         const anterior = parseNum(col[6]);
                         const fecha = (col[7] || '').replace(/"/g, '').trim();
-                        let tendencia = (col[8] || '').replace(/"/g, '').trim();
-                        const operador = (col[9] || '').replace(/"/g, '').trim();
+                        const hora = (col[8] || '').replace(/"/g, '').trim();
+                        let tendencia = (col[9] || '').replace(/"/g, '').trim();
+                        const operador = (col[10] || '').replace(/"/g, '').trim();
 
                         if (nombre && !isNaN(lat) && !isNaN(lng)) {
                             if (!mapaEstaciones[nombre]) {
                                 mapaEstaciones[nombre] = {
-                                    nombre, lat, lng, alt, desc, actual, anterior, fecha, tendencia, operador,
+                                    nombre, lat, lng, alt, desc, actual, anterior, fecha, hora, tendencia, operador,
                                     historicoValores: [],
                                     historicoFechas: []
                                 };
                             }
 
-                            // Actualiza con los datos de la fila más reciente (las que se agregan abajo)
                             mapaEstaciones[nombre].actual = actual;
                             mapaEstaciones[nombre].anterior = anterior;
                             mapaEstaciones[nombre].fecha = fecha;
+                            mapaEstaciones[nombre].hora = hora;
                             mapaEstaciones[nombre].tendencia = tendencia;
                             mapaEstaciones[nombre].operador = operador;
 
                             if (!isNaN(actual)) {
                                 mapaEstaciones[nombre].historicoValores.push(actual);
-                                mapaEstaciones[nombre].historicoFechas.push(fecha || `Med ${mapaEstaciones[nombre].historicoValores.length}`);
+                                const etiquetaHora = hora ? `${fecha} ${hora}` : fecha;
+                                mapaEstaciones[nombre].historicoFechas.push(etiquetaHora || `Lec ${mapaEstaciones[nombre].historicoValores.length}`);
                             }
                         }
                     }
@@ -215,7 +215,6 @@
 
                 if (Object.keys(mapaEstaciones).length > 0) {
                     renderizarPuntos(mapaEstaciones);
-                    console.log("¡Mapa actualizado correctamente desde Google Sheets!");
                 }
             })
             .catch(err => console.error("Error al cargar datos del Sheet:", err));
@@ -223,7 +222,6 @@
 
     cargarDatosSheets();
 
-    // Botón de recarga manual anti-caché
     const btnRefresh = L.control({ position: 'topright' });
     btnRefresh.onAdd = function () {
         const div = L.DomUtil.create('div', 'leaflet-bar');
@@ -236,7 +234,6 @@
     };
     btnRefresh.addTo(map);
 
-    // Leyenda y Selector de Capas
     const legend = L.control({ position: 'bottomright' });
     legend.onAdd = function () {
         const div = L.DomUtil.create('div', 'legend');
